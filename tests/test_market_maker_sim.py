@@ -3,11 +3,27 @@ import pytest
 
 from backtest.market_maker_sim import run_backtest
 from data.synthetic_lob import SyntheticLOBConfig, generate_session
+from lob.models import Side
+from strategies.base import MarketState, Quote, Strategy
 from strategies.naive import NaiveSymmetricStrategy
 
 
 def _event(order_id, time, type_, side=None, price=None, size=None):
     return {"order_id": order_id, "time": time, "type": type_, "side": side, "price": price, "size": size}
+
+
+class _FixedQuoteStrategy(Strategy):
+    """Always returns the same Quote once a mid-price exists, and never
+    changes it again -- isolates latency/merge-loop tests from any real
+    strategy's own reactive behavior, so at most one requote is ever
+    in flight unless the test explicitly arranges more.
+    """
+
+    def __init__(self, quote: Quote) -> None:
+        self._quote = quote
+
+    def quote(self, state: MarketState) -> Quote:
+        return self._quote if state.mid_price is not None else Quote.none()
 
 
 def test_naive_strategy_gets_filled_by_marketable_background_order():
@@ -97,3 +113,80 @@ def test_full_synthetic_session_smoke():
     assert len(result.portfolio.trades) > 0  # some background flow should hit the strategy's quotes
     final_equity = result.portfolio_history["equity"].iloc[-1]
     assert final_equity == final_equity or result.portfolio.inventory != 0  # not NaN unless still holding inventory
+
+
+def test_delayed_requote_interacts_with_book_as_it_actually_was_at_arrival():
+    # The strategy decides ONE quote (bid=97.50) at t=1.0, when the only
+    # resting ask is 99.00 -- at zero latency this would just rest
+    # passively, no fill. But its arrival is delayed to t=51.0, and at
+    # t=2.0 a background order posts a *better* ask (97.20) that the
+    # strategy's decision never saw. If the delayed order is matched
+    # against the book as it was at *decision* time, nothing crosses. If
+    # it's matched against the book as it actually is at *arrival* time
+    # (the Step 8 claim), it should immediately cross the 97.20 ask as a
+    # taker -- proving latency-induced staleness has a real, observable
+    # consequence, not just a delayed timestamp.
+    events = pd.DataFrame(
+        [
+            _event(1, 0.0, "LIMIT", "SELL", 99.00, 10),
+            _event(2, 1.0, "LIMIT", "BUY", 97.00, 10),  # mid=98.00 -> decision at t=1.0
+            _event(3, 2.0, "LIMIT", "SELL", 97.20, 5),  # better ask appears AFTER the decision
+        ]
+    )
+    fixed_quote = Quote(bid_price=97.50, bid_size=20, ask_price=98.50, ask_size=20)
+    strategy = _FixedQuoteStrategy(fixed_quote)
+
+    result = run_backtest(events, strategy, strategy_latency_model=lambda t: t + 50.0)
+
+    assert len(result.portfolio.trades) == 1
+    trade = result.portfolio.trades[0]
+    assert trade.is_maker is False  # arrived and crossed as a taker, not rested as a maker
+    assert trade.side == Side.BUY
+    assert trade.price == pytest.approx(97.20)
+    assert trade.size == 5
+    assert result.portfolio.inventory == 5
+
+
+def test_out_of_order_arrivals_last_to_arrive_wins_not_last_decided():
+    # Decision A (t=1.0) is delayed heavily (arrives at t=51); decision B
+    # (t=2.0, decided *after* A) is delayed lightly (arrives at t=3) --
+    # so B lands first, then A lands later and overwrites it. The engine
+    # should end up resting at A's prices, proving arrival order controls
+    # final book state, not decision order (same claim as Step 2's
+    # engine-level test, now exercised through the full interactive sim).
+    events = pd.DataFrame(
+        [
+            _event(1, 0.0, "LIMIT", "SELL", 99.00, 10),
+            _event(2, 1.0, "LIMIT", "BUY", 97.00, 10),  # mid=98.00 -> decision A: bid=97.50/ask=98.50
+            _event(3, 2.0, "LIMIT", "BUY", 97.20, 5),  # improves best bid -> decision B: bid=97.60/ask=98.60
+            _event(999, 60.0, "CANCEL"),  # trailing event so both arrivals (t=3, t=51) show up in a row
+        ]
+    )
+    strategy = NaiveSymmetricStrategy(half_spread=0.5, quote_size=20)
+
+    def latency_model(decision_time: float) -> float:
+        return decision_time + 50.0 if decision_time == 1.0 else decision_time + 1.0
+
+    result = run_backtest(events, strategy, strategy_latency_model=latency_model)
+
+    last_row = result.book_snapshots.iloc[-1]
+    assert last_row["bid_price_1"] == pytest.approx(97.50)  # A's price, not B's 97.60
+    assert last_row["ask_price_1"] == pytest.approx(98.50)
+
+
+def test_default_latency_matches_explicit_none():
+    events = pd.DataFrame(
+        [
+            _event(1, 0.0, "LIMIT", "SELL", 99.00, 10),
+            _event(2, 1.0, "LIMIT", "BUY", 97.00, 10),
+            _event(3, 2.0, "MARKET", "BUY", size=5),
+        ]
+    )
+    strategy_a = NaiveSymmetricStrategy(half_spread=0.5, quote_size=20)
+    strategy_b = NaiveSymmetricStrategy(half_spread=0.5, quote_size=20)
+
+    result_default = run_backtest(events, strategy_a)
+    result_explicit_none = run_backtest(events, strategy_b, strategy_latency_model=None)
+
+    assert result_default.portfolio.inventory == result_explicit_none.portfolio.inventory
+    assert result_default.portfolio.cash == result_explicit_none.portfolio.cash

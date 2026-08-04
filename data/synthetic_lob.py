@@ -18,6 +18,21 @@ microstructure literature (e.g. Cont, Stoikov & Talreja's queue-reactive
 model; Avellaneda-Stoikov-style order placement), not fitted to any
 specific stock. That is a disclosed judgment call, not an empirical fact.
 
+Order arrival rates were recalibrated during Step 8 (latency modeling).
+The original rates (2.0/sec limit, 0.3/sec market) produced a mean
+inter-event gap of ~230ms -- coarser than even the slowest (50ms) latency
+preset in lob/latency.py, so a strategy's delayed order almost always
+still arrived before any other event could intervene, making the whole
+0/5/20/50ms sweep nearly flat regardless of the actual delay. That flatness
+was verified to be a data-density artifact, not a broken mechanism (a
+diagnostic sweep at 100ms-2000ms, comparable to the *old* rate's own event
+cadence, showed clear, monotonic P&L degradation). The rates below are
+~25x higher specifically so the sub-50ms latency range this project
+studies is comparable to or larger than the data's own event spacing --
+still a disclosed, illustrative choice, not fitted to a specific measured
+market, but now at least internally consistent with the latency scale
+Step 8 actually sweeps.
+
 Model (a simplified queue-reactive / reduced-form model):
 
 - A reference mid-price follows a discrete-time random walk in tick units.
@@ -76,9 +91,11 @@ class SyntheticLOBConfig:
     # relative to the reference mid.
     half_spread_ticks: float = 2.0
 
-    # Poisson rates, events per second.
-    limit_order_rate: float = 2.0
-    market_order_rate: float = 0.3
+    # Poisson rates, events per second. ~25x the original Step 1 values --
+    # see the module docstring's "Order arrival rates were recalibrated
+    # during Step 8" note for why.
+    limit_order_rate: float = 50.0
+    market_order_rate: float = 7.5
 
     # Depth (in ticks) of a new limit order beyond the reference best
     # bid/ask: depth ~ Geometric(depth_p), so mean depth = (1-p)/p.
