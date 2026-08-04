@@ -65,3 +65,7 @@ class Strategy(abc.ABC):
         this often without needing to self-throttle.
         """
         raise NotImplementedError
+
+
+def round_to_tick(price: float, tick_size: float) -> float:
+    return round(price / tick_size) * tick_size

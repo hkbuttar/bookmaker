@@ -9,7 +9,7 @@ has to beat to justify itself.
 
 from __future__ import annotations
 
-from strategies.base import MarketState, Quote, Strategy
+from strategies.base import MarketState, Quote, Strategy, round_to_tick
 
 
 class NaiveSymmetricStrategy(Strategy):
@@ -24,7 +24,7 @@ class NaiveSymmetricStrategy(Strategy):
         if state.mid_price is None:
             return Quote.none()
 
-        bid_price = round((state.mid_price - self.half_spread) / self.tick_size) * self.tick_size
-        ask_price = round((state.mid_price + self.half_spread) / self.tick_size) * self.tick_size
+        bid_price = round_to_tick(state.mid_price - self.half_spread, self.tick_size)
+        ask_price = round_to_tick(state.mid_price + self.half_spread, self.tick_size)
 
         return Quote(bid_price=bid_price, bid_size=self.quote_size, ask_price=ask_price, ask_size=self.quote_size)
