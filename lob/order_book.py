@@ -162,6 +162,14 @@ class OrderBook:
             del book_side[order.price]
         return True
 
+    def has_order(self, order_id: int) -> bool:
+        """Whether `order_id` is currently resting -- used by callers (e.g.
+        backtest.market_maker_sim) that need to know if their own quote is
+        still live after a submission that may have partially or fully
+        filled immediately, without reaching into book internals.
+        """
+        return order_id in self._order_index
+
     def depth(self, n_levels: int = 5) -> dict[str, list[tuple[float, int]]]:
         """Aggregate resting size per price level, best-first, up to
         `n_levels` per side.

@@ -61,3 +61,26 @@ def compute_features(
     df["realized_vol"] = log_returns.rolling(vol_window, min_periods=max(2, vol_window // 5)).std()
 
     return df
+
+
+def mid_and_spread_from_row(row: dict) -> tuple[float | None, float | None]:
+    """Scalar counterpart to `compute_features`'s mid_price/spread columns,
+    for callers building state one event at a time (backtest.market_maker_sim)
+    rather than post-processing a whole DataFrame. Same definitions,
+    intentionally kept in sync with the vectorized version above.
+    """
+    bid, ask = row["bid_price_1"], row["ask_price_1"]
+    if np.isnan(bid) or np.isnan(ask):
+        return None, None
+    return (bid + ask) / 2.0, ask - bid
+
+
+def imbalance_from_row(row: dict, levels: int) -> float | None:
+    """Scalar counterpart to `compute_features`'s imbalance column -- see
+    mid_and_spread_from_row's docstring for why this exists separately."""
+    bid_vol = sum(row[f"bid_size_{lvl}"] for lvl in range(1, levels + 1))
+    ask_vol = sum(row[f"ask_size_{lvl}"] for lvl in range(1, levels + 1))
+    total_vol = bid_vol + ask_vol
+    if total_vol <= 0:
+        return None
+    return (bid_vol - ask_vol) / total_vol
