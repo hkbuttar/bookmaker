@@ -1,0 +1,28 @@
+# Core numerics
+numpy>=2.0
+pandas>=2.2
+numba>=0.66
+
+# RL
+gymnasium>=1.0
+stable-baselines3>=2.9
+torch>=2.9
+
+# Backend
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.8
+sqlalchemy>=2.0
+psycopg2-binary>=2.9
+
+# Frontend
+bokeh>=3.5
+
+# Testing
+pytest>=8.0
+pytest-cov>=5.0
+
+# Misc
+requests>=2.32
+websocket-client>=1.8
+python-dotenv>=1.0

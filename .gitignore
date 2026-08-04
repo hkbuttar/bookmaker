@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environment
+.venv/
+venv/
+
+# Captured/generated data -- reproducible from the generator/capture
+# scripts, not meant to be committed.
+data/synthetic_session_sample.csv
+data/binance_sample/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Env / secrets
+.env
+
+# OS
+.DS_Store
