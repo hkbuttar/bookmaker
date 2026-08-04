@@ -164,10 +164,35 @@ class OrderBook:
 
     def depth(self, n_levels: int = 5) -> dict[str, list[tuple[float, int]]]:
         """Aggregate resting size per price level, best-first, up to
-        `n_levels` per side."""
-        bid_levels = [(p, sum(o.size for o in level.values())) for p, level in self.bids.items()]
-        ask_levels = [(p, sum(o.size for o in level.values())) for p, level in self.asks.items()]
-        return {
-            "bids": list(reversed(bid_levels))[:n_levels],
-            "asks": ask_levels[:n_levels],
-        }
+        `n_levels` per side.
+
+        Uses SortedDict's key-view slicing to grab only the top `n_levels`
+        prices directly, rather than materializing every resting price
+        level on the book -- this runs once per replayed event (Step 3
+        records book state after every event), so it needs to stay
+        O(n_levels), not O(all resting levels).
+        """
+        bid_prices = list(reversed(self.bids.keys()[-n_levels:])) if self.bids else []
+        ask_prices = list(self.asks.keys()[:n_levels]) if self.asks else []
+        bid_levels = [(p, sum(o.size for o in self.bids[p].values())) for p in bid_prices]
+        ask_levels = [(p, sum(o.size for o in self.asks[p].values())) for p in ask_prices]
+        return {"bids": bid_levels, "asks": ask_levels}
+
+    def top_levels(self, n_levels: int) -> dict[str, float]:
+        """Flat {bid_price_i, bid_size_i, ask_price_i, ask_size_i} snapshot,
+        best-first, padded with NaN price / 0 size for levels the book
+        doesn't have. Deliberately the same shape as
+        data/binance_capture.py's LocalOrderBook.top_levels, so book state
+        from either data source can feed the same replay/feature code
+        (Step 11 compares strategies across both).
+        """
+        d = self.depth(n_levels)
+        row: dict[str, float] = {}
+        for i in range(n_levels):
+            bid_price, bid_size = d["bids"][i] if i < len(d["bids"]) else (float("nan"), 0)
+            ask_price, ask_size = d["asks"][i] if i < len(d["asks"]) else (float("nan"), 0)
+            row[f"bid_price_{i + 1}"] = bid_price
+            row[f"bid_size_{i + 1}"] = bid_size
+            row[f"ask_price_{i + 1}"] = ask_price
+            row[f"ask_size_{i + 1}"] = ask_size
+        return row

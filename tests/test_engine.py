@@ -85,3 +85,30 @@ def test_replay_full_synthetic_session_smoke():
     best_ask = engine.book.best_ask()
     if best_bid is not None and best_ask is not None:
         assert best_bid < best_ask  # matching must never leave a crossed book
+
+
+def test_book_snapshots_recorded_one_row_per_event_reflecting_state_after_it():
+    events = pd.DataFrame(
+        [
+            _event(1, 0.0, "LIMIT", "BUY", 100.00, 10),
+            _event(2, 1.0, "LIMIT", "SELL", 100.05, 5),  # rests, doesn't cross
+            _event(1, 2.0, "CANCEL"),  # cancels order 1
+        ]
+    )
+
+    engine = MatchingEngine()
+    result = engine.replay(events, record_levels=3)
+
+    assert len(result.book_snapshots) == len(events)
+    # After event 1: order 1 resting as the best (only) bid.
+    row0 = result.book_snapshots.iloc[0]
+    assert row0["bid_price_1"] == 100.00
+    assert row0["bid_size_1"] == 10
+    # After event 2: order 2 resting as the best ask, bid untouched.
+    row1 = result.book_snapshots.iloc[1]
+    assert row1["bid_price_1"] == 100.00
+    assert row1["ask_price_1"] == 100.05
+    # After event 3 (cancel of order 1): bid side now empty.
+    row2 = result.book_snapshots.iloc[2]
+    assert pd.isna(row2["bid_price_1"])
+    assert row2["ask_price_1"] == 100.05

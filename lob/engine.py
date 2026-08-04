@@ -35,6 +35,12 @@ def zero_latency(decision_time: float) -> float:
 class ReplayResult:
     fills: list[Fill]
     unknown_cancels: int  # cancels that targeted an already-gone order_id
+    # Book state (lob.order_book.OrderBook.top_levels shape) recorded
+    # immediately after every processed event, one row per event, in
+    # arrival order -- the row-aligned message/orderbook pairing LOBSTER
+    # uses, and what Step 3's feature computation (lob/features.py)
+    # consumes directly.
+    book_snapshots: pd.DataFrame
 
 
 class MatchingEngine:
@@ -42,7 +48,7 @@ class MatchingEngine:
         self.book = OrderBook(tick_size=tick_size)
         self.latency_model = latency_model or zero_latency
 
-    def replay(self, events: pd.DataFrame) -> ReplayResult:
+    def replay(self, events: pd.DataFrame, record_levels: int = 10) -> ReplayResult:
         """Replay a decision-event stream (order_id, time, type, side, price,
         size -- the schema data/synthetic_lob.py produces) through the book.
 
@@ -51,6 +57,12 @@ class MatchingEngine:
         then order_id as tiebreaks) before processing, so a later decision
         with lower latency can legitimately reach the book before an
         earlier one with higher latency.
+
+        Book state is snapshotted (top `record_levels` per side) after
+        every event, including cancels and no-fill events -- a cancel or
+        an unfilled market order can still change best bid/ask or depth,
+        so skipping "quiet" events would leave gaps in the reconstructed
+        book state Step 3 needs.
         """
         records = events.to_dict("records")
         for rec in records:
@@ -59,6 +71,7 @@ class MatchingEngine:
 
         fills: list[Fill] = []
         unknown_cancels = 0
+        book_rows: list[dict] = []
 
         for rec in records:
             event_type = EventType(rec["type"])
@@ -70,20 +83,27 @@ class MatchingEngine:
                 found = self.book.cancel_order(order_id, arrival_time)
                 if not found:
                     unknown_cancels += 1
-                continue
+            else:
+                side = Side(rec["side"])
+                size = int(rec["size"])
 
-            side = Side(rec["side"])
-            size = int(rec["size"])
-
-            if event_type is EventType.LIMIT:
-                fills.extend(
-                    self.book.submit_limit_order(
-                        order_id, side, float(rec["price"]), size, decision_time, arrival_time
+                if event_type is EventType.LIMIT:
+                    fills.extend(
+                        self.book.submit_limit_order(
+                            order_id, side, float(rec["price"]), size, decision_time, arrival_time
+                        )
                     )
-                )
-            elif event_type is EventType.MARKET:
-                fills.extend(
-                    self.book.submit_market_order(order_id, side, size, decision_time, arrival_time)
-                )
+                elif event_type is EventType.MARKET:
+                    fills.extend(
+                        self.book.submit_market_order(order_id, side, size, decision_time, arrival_time)
+                    )
 
-        return ReplayResult(fills=fills, unknown_cancels=unknown_cancels)
+            row = self.book.top_levels(record_levels)
+            row["time"] = arrival_time
+            row["order_id"] = order_id
+            row["event_type"] = event_type.value
+            book_rows.append(row)
+
+        return ReplayResult(
+            fills=fills, unknown_cancels=unknown_cancels, book_snapshots=pd.DataFrame(book_rows)
+        )
