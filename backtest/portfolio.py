@@ -21,6 +21,25 @@ class Trade:
     is_maker: bool  # True if this fill was the strategy's resting order getting hit
 
 
+def equity_from(cash: float, inventory: int, mid_price: float | None) -> float:
+    """Mark-to-mid equity: cash plus inventory valued at the current
+    mid-price. If inventory is flat, equity is just cash and a missing
+    mid-price (an empty side of the book) doesn't matter. If inventory is
+    non-zero and mid_price is unavailable, equity can't be marked and this
+    returns NaN rather than silently using a stale price.
+
+    A free function, not just a Portfolio method, so risk.kill_switch can
+    compute the same equity a strategy would see from MarketState's raw
+    cash/inventory/mid_price fields without duplicating this formula or
+    needing a Portfolio instance of its own.
+    """
+    if inventory == 0:
+        return cash
+    if mid_price is None:
+        return float("nan")
+    return cash + inventory * mid_price
+
+
 @dataclasses.dataclass
 class Portfolio:
     cash: float = 0.0
@@ -37,14 +56,4 @@ class Portfolio:
         self.trades.append(Trade(time=time, side=side, price=price, size=size, is_maker=is_maker))
 
     def equity(self, mid_price: float | None) -> float:
-        """Mark-to-mid equity: cash plus inventory valued at the current
-        mid-price. If inventory is flat, equity is just cash and a missing
-        mid-price (an empty side of the book) doesn't matter. If inventory
-        is non-zero and mid_price is unavailable, equity can't be marked
-        and this returns NaN rather than silently using a stale price.
-        """
-        if self.inventory == 0:
-            return self.cash
-        if mid_price is None:
-            return float("nan")
-        return self.cash + self.inventory * mid_price
+        return equity_from(self.cash, self.inventory, mid_price)
