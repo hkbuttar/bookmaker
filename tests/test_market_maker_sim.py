@@ -190,3 +190,51 @@ def test_default_latency_matches_explicit_none():
 
     assert result_default.portfolio.inventory == result_explicit_none.portfolio.inventory
     assert result_default.portfolio.cash == result_explicit_none.portfolio.cash
+
+
+class _CountingStrategy(Strategy):
+    """Delegates to an inner strategy but records how many times quote()
+    was actually called -- used to verify decision_interval_seconds
+    throttles decision *opportunities*, for rl.evaluate's fixed-cadence
+    comparison against RL policies.
+    """
+
+    def __init__(self, inner: Strategy) -> None:
+        self.inner = inner
+        self.call_times: list[float] = []
+
+    def quote(self, state: MarketState) -> Quote:
+        self.call_times.append(state.time)
+        return self.inner.quote(state)
+
+
+def test_decision_interval_throttles_quote_calls_to_fixed_boundaries():
+    events = pd.DataFrame(
+        [_event(i, float(i) * 0.2, "LIMIT", "BUY", 97.00, 1) for i in range(1, 30)]
+        + [_event(100, 0.05, "LIMIT", "SELL", 99.00, 1)]
+    )
+    events = events.sort_values("time").reset_index(drop=True)
+
+    unthrottled = _CountingStrategy(NaiveSymmetricStrategy(half_spread=0.5, quote_size=10))
+    run_backtest(events, unthrottled)  # decision_interval_seconds=None -> every event
+
+    throttled = _CountingStrategy(NaiveSymmetricStrategy(half_spread=0.5, quote_size=10))
+    run_backtest(events, throttled, decision_interval_seconds=1.0)
+
+    assert len(unthrottled.call_times) == len(events)
+    assert len(throttled.call_times) < len(unthrottled.call_times)
+    # At most one decision per 1-second boundary crossed by the data (times span ~0.05-5.8s).
+    assert len(throttled.call_times) <= 6
+    # Decisions happen on the first event to reach each boundary, so
+    # consecutive recorded times should be spaced >= the interval apart.
+    for earlier, later in zip(throttled.call_times, throttled.call_times[1:]):
+        assert later - earlier >= 1.0 - 1e-9
+
+
+def test_decision_interval_none_is_default_and_unthrottled():
+    events = pd.DataFrame(
+        [_event(1, 0.0, "LIMIT", "SELL", 99.00, 10), _event(2, 0.001, "LIMIT", "BUY", 97.00, 10)]
+    )
+    counting = _CountingStrategy(NaiveSymmetricStrategy(half_spread=0.5, quote_size=10))
+    run_backtest(events, counting)
+    assert len(counting.call_times) == 2

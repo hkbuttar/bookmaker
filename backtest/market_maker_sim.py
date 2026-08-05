@@ -2,13 +2,15 @@
 
 The strategy's own resting orders live in exactly the same OrderBook as the
 background flow (the synthetic generator's "everyone else"), fixed at two
-sentinel ids (-1 for its bid, -2 for its ask, since a strategy holds at most
-one resting order per side here). That means background market orders can
-fill the strategy's quotes, and -- if a strategy is ever aggressive enough
-to quote through the touch -- the strategy's own submission can immediately
-cross resting background liquidity. Both directions are handled uniformly
-by `_attribute_fills` below, which only cares whether the sentinel ids show
-up as maker or taker on a given Fill.
+sentinel ids (see backtest.execution: an agent holds at most one resting
+order per side here). That means background market orders can fill the
+strategy's quotes, and -- if a strategy is ever aggressive enough to quote
+through the touch -- the strategy's own submission can immediately cross
+resting background liquidity. Both directions are handled uniformly by
+`backtest.execution.attribute_fills`, which only cares whether the
+sentinel ids show up as maker or taker on a given Fill. That module (fill
+attribution + requote application) is shared with `rl.env` (Step 9), which
+needs the exact same mechanics for its own agent.
 
 Latency (Step 8) applies only to the strategy's own order submissions, not
 to the background flow: `strategy_latency_model` maps the moment the
@@ -74,15 +76,11 @@ import itertools
 
 import pandas as pd
 
+from backtest.execution import apply_requote, attribute_fills
 from backtest.portfolio import Portfolio
 from lob.engine import LatencyModel, MatchingEngine, zero_latency
 from lob.features import imbalance_from_row, mid_and_spread_from_row
-from lob.models import Fill, Side
 from strategies.base import MarketState, Quote, Strategy
-
-STRATEGY_BID_ID = -1
-STRATEGY_ASK_ID = -2
-_STRATEGY_IDS = {STRATEGY_BID_ID, STRATEGY_ASK_ID}
 
 
 @dataclasses.dataclass
@@ -92,32 +90,6 @@ class BacktestResult:
     book_snapshots: pd.DataFrame
 
 
-def _attribute_fills(fills: list[Fill], portfolio: Portfolio) -> None:
-    for f in fills:
-        if f.maker_order_id in _STRATEGY_IDS:
-            portfolio.apply_fill(side=f.maker_side, price=f.price, size=f.size, time=f.time, is_maker=True)
-        elif f.taker_order_id in _STRATEGY_IDS:
-            portfolio.apply_fill(side=f.taker_side, price=f.price, size=f.size, time=f.time, is_maker=False)
-
-
-def _apply_requote(engine: MatchingEngine, portfolio: Portfolio, quote: Quote, arrival_time: float, decision_time: float) -> None:
-    if engine.book.has_order(STRATEGY_BID_ID):
-        engine.book.cancel_order(STRATEGY_BID_ID, arrival_time)
-    if engine.book.has_order(STRATEGY_ASK_ID):
-        engine.book.cancel_order(STRATEGY_ASK_ID, arrival_time)
-
-    if quote.bid_price is not None and quote.bid_size > 0:
-        fills = engine.book.submit_limit_order(
-            STRATEGY_BID_ID, Side.BUY, quote.bid_price, quote.bid_size, decision_time, arrival_time
-        )
-        _attribute_fills(fills, portfolio)
-    if quote.ask_price is not None and quote.ask_size > 0:
-        fills = engine.book.submit_limit_order(
-            STRATEGY_ASK_ID, Side.SELL, quote.ask_price, quote.ask_size, decision_time, arrival_time
-        )
-        _attribute_fills(fills, portfolio)
-
-
 def run_backtest(
     background_events: pd.DataFrame,
     strategy: Strategy,
@@ -125,7 +97,22 @@ def run_backtest(
     imbalance_levels: int = 1,
     record_levels: int = 10,
     strategy_latency_model: LatencyModel | None = None,
+    decision_interval_seconds: float | None = None,
 ) -> BacktestResult:
+    """`decision_interval_seconds=None` (default): unchanged Steps 4-8
+    behavior -- the strategy is asked to decide after every background
+    event. Set to a float to throttle decisions to fixed time boundaries
+    instead (at most once per interval, on the first event whose
+    arrival_time reaches the next boundary) -- this is what
+    `rl.evaluate.RLStrategyAdapter` needs to put a trained RL policy
+    (which only ever acted once per `decision_interval_seconds` during
+    training) through the exact same execution mechanics as the hand-tuned
+    strategies, for a decision-cadence-matched comparison. Since none of
+    Steps 4-6's strategies condition on wall-clock time, throttling their
+    decisions this way has no behavioral effect on them -- only the
+    cadence of *opportunities* to change a quote is reduced, and their
+    quote wouldn't have changed on a "quiet" tick anyway.
+    """
     engine = MatchingEngine(tick_size=tick_size)  # background flow always replays at zero latency
     portfolio = Portfolio()
     records = engine.prepare_events(background_events)
@@ -134,6 +121,7 @@ def run_backtest(
     last_decided_quote: Quote | None = None
     pending: list[tuple[float, int, float, Quote]] = []  # (arrival_time, seq, decision_time, quote)
     seq_counter = itertools.count()
+    next_decision_boundary = decision_interval_seconds
 
     portfolio_rows: list[dict] = []
     book_rows: list[dict] = []
@@ -147,36 +135,45 @@ def run_backtest(
 
         if next_pending_time <= next_bg_time:
             arrival_time, _, decision_time, quote = heapq.heappop(pending)
-            _apply_requote(engine, portfolio, quote, arrival_time, decision_time)
+            apply_requote(engine, portfolio, quote, arrival_time, decision_time)
             continue
 
         rec = records[bg_idx]
         bg_idx += 1
 
         outcome = engine.process_event(rec)
-        _attribute_fills(outcome.fills, portfolio)
+        attribute_fills(outcome.fills, portfolio)
 
         row = engine.book.top_levels(record_levels)
         mid_price, spread = mid_and_spread_from_row(row)
         imbalance = imbalance_from_row(row, imbalance_levels)
 
-        state = MarketState(
-            time=rec["arrival_time"],
-            best_bid=None if mid_price is None else row["bid_price_1"],
-            best_ask=None if mid_price is None else row["ask_price_1"],
-            mid_price=mid_price,
-            spread=spread,
-            imbalance=imbalance,
-            inventory=portfolio.inventory,
-            cash=portfolio.cash,
-        )
-        desired = strategy.quote(state)
+        if decision_interval_seconds is None:
+            should_decide = True
+        else:
+            should_decide = rec["arrival_time"] >= next_decision_boundary
+            if should_decide:
+                while next_decision_boundary <= rec["arrival_time"]:
+                    next_decision_boundary += decision_interval_seconds
 
-        if desired != last_decided_quote:
-            decision_time = rec["arrival_time"]
-            arrival_time = strategy_latency(decision_time)
-            heapq.heappush(pending, (arrival_time, next(seq_counter), decision_time, desired))
-            last_decided_quote = desired
+        if should_decide:
+            state = MarketState(
+                time=rec["arrival_time"],
+                best_bid=None if mid_price is None else row["bid_price_1"],
+                best_ask=None if mid_price is None else row["ask_price_1"],
+                mid_price=mid_price,
+                spread=spread,
+                imbalance=imbalance,
+                inventory=portfolio.inventory,
+                cash=portfolio.cash,
+            )
+            desired = strategy.quote(state)
+
+            if desired != last_decided_quote:
+                decision_time = rec["arrival_time"]
+                arrival_time = strategy_latency(decision_time)
+                heapq.heappush(pending, (arrival_time, next(seq_counter), decision_time, desired))
+                last_decided_quote = desired
 
         portfolio_rows.append(
             {
