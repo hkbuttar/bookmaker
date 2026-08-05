@@ -1,14 +1,14 @@
-"""Reusable training-curve sanity checks (Step 10), so "confirm reward
-curves are sane before trusting any comparison in Step 11" is actual,
+"""Reusable training-curve sanity checks, so "confirm reward
+curves are sane before trusting any comparison" is actual,
 tested code rather than the ad hoc quartile-printing scripts used to
-investigate Step 9's training runs. Any future retraining (e.g. revisiting
-RL with the Step 10 FIFO-priority fix applied) should run its callback's
+investigate early training runs. Any future retraining (e.g. revisiting
+RL with a different execution-model fix applied) should run its callback's
 episode stats through this before treating the result as trustworthy.
 
 Deliberately conservative: this flags concerns, it doesn't declare a
-training run "good" -- Step 9's own results (reward improved and then
+training run "good" -- an early result (reward improved and then
 plateaued, inventory std dropped substantially, no instability, and the
-policy *still* underperformed hand-tuned baselines) are the reminder that
+policy *still* underperformed hand-tuned baselines) is the reminder that
 a clean-looking training curve doesn't guarantee a competitive policy.
 """
 

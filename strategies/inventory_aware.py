@@ -16,13 +16,13 @@ implementation collapses `gamma * sigma^2 * (T - t)` into a single constant,
 inventory. That constant is a disclosed modeling choice, not a derived
 optimum: a real desk would calibrate it against realized volatility, risk
 tolerance, and holding costs; here it's fixed and documented so its effect
-on P&L and inventory variance can be read directly out of the Step 11
+on P&L and inventory variance can be read directly out of the strategy
 comparison table.
 
 At `inventory_penalty=0` this strategy is mathematically identical to
 `NaiveSymmetricStrategy` (see tests/test_inventory_aware_strategy.py) --
-Step 5 strictly generalizes Step 4 rather than replacing it with something
-unrelated.
+it strictly generalizes the naive strategy rather than replacing it with
+something unrelated.
 """
 
 from __future__ import annotations

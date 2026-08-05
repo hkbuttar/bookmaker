@@ -1,7 +1,7 @@
 """Event loop driving an OrderBook from a stream of decision events.
 
 This is where the decision-time vs. arrival-time separation lives, by
-design from the start rather than retrofitted for Step 8: every event in
+design from the start rather than retrofitted later: every event in
 the input stream has a `time` (when a strategy *decided* to act), and a
 `latency_model` maps that to an `arrival_time` (when the order actually
 reaches the book). The book only ever sees arrival order.
@@ -9,8 +9,8 @@ reaches the book). The book only ever sees arrival order.
 With the default zero-latency model, arrival_time == decision_time and the
 loop reduces to "process events in the order they were decided" -- but the
 sort-by-arrival-time step below still runs. That matters even at zero
-latency: it's what keeps this code path identical to the one Step 8 will
-exercise with a real stochastic model, so introducing latency later means
+latency: it's what keeps this code path identical to the one a real
+stochastic latency model will exercise, so introducing latency later means
 swapping the model, not rewriting the loop.
 """
 
@@ -38,7 +38,7 @@ class ReplayResult:
     # Book state (lob.order_book.OrderBook.top_levels shape) recorded
     # immediately after every processed event, one row per event, in
     # arrival order -- the row-aligned message/orderbook pairing LOBSTER
-    # uses, and what Step 3's feature computation (lob/features.py)
+    # uses, and what the feature computation (lob/features.py)
     # consumes directly.
     book_snapshots: pd.DataFrame
 
@@ -100,7 +100,7 @@ class MatchingEngine:
         every event, including cancels and no-fill events -- a cancel or
         an unfilled market order can still change best bid/ask or depth,
         so skipping "quiet" events would leave gaps in the reconstructed
-        book state Step 3 needs.
+        book state downstream feature computation needs.
         """
         records = self.prepare_events(events)
 

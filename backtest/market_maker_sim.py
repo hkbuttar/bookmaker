@@ -9,10 +9,10 @@ through the touch -- the strategy's own submission can immediately cross
 resting background liquidity. Both directions are handled uniformly by
 `backtest.execution.attribute_fills`, which only cares whether the
 sentinel ids show up as maker or taker on a given Fill. That module (fill
-attribution + requote application) is shared with `rl.env` (Step 9), which
+attribution + requote application) is shared with `rl.env`, which
 needs the exact same mechanics for its own agent.
 
-Latency (Step 8) applies only to the strategy's own order submissions, not
+Latency applies only to the strategy's own order submissions, not
 to the background flow: `strategy_latency_model` maps the moment the
 strategy *decides* on a new quote to the moment that requote actually
 *arrives* at the book. The background stream is the ground-truth market
@@ -21,7 +21,7 @@ studying, so it always replays at its given timestamps (zero latency at
 the MatchingEngine level, regardless of `strategy_latency_model`).
 
 This is exactly what the decision/arrival-time split built into
-`lob.engine.MatchingEngine` from Step 2 was for: a strategy's requote is
+`lob.engine.MatchingEngine` from the start was for: a strategy's requote is
 scheduled into a min-heap keyed by its arrival_time, and the main loop
 merges that heap with the background event stream in true arrival order.
 Concretely, per iteration the loop processes whichever comes next:
@@ -43,8 +43,8 @@ Two disclosed modeling choices worth being explicit about:
   one latency draw, not two independently-delayed messages. A real system
   might send a cancel and a new order separately (with a brief window
   where stale and fresh quotes coexist, or neither does); modeling that
-  would add complexity without changing the P&L-vs-latency shape Step 8
-  is after.
+  would add complexity without changing the P&L-vs-latency shape this
+  project is after.
 - Requoting is fire-and-forget: the strategy is asked for a fresh decision
   after every background event regardless of whether its previous requote
   has arrived yet, and multiple in-flight requotes are not suppressed or
@@ -56,12 +56,12 @@ Two disclosed modeling choices worth being explicit about:
 At the default `strategy_latency_model=None` (zero latency), every pending
 requote's arrival_time equals the background event that triggered it, so
 it's always processed before the next background event -- reproducing the
-exact pre-Step-8 behavior (requote applied inline, same iteration) as a
-special case, not a separate code path.
+exact pre-latency-modeling behavior (requote applied inline, same
+iteration) as a special case, not a separate code path.
 
 Book snapshots and portfolio history stay tied to background events only
 (never to a requote's arrival on its own), so their row count is always
-exactly `len(background_events)`, matching Steps 4-7. This extends the
+exactly `len(background_events)`. This extends the
 already-disclosed one-event lag: a delayed requote's effect on the book
 first shows up in the *next* background event's row, whether "next" is
 one event later (zero latency) or several events later (its actual
@@ -99,7 +99,7 @@ def run_backtest(
     strategy_latency_model: LatencyModel | None = None,
     decision_interval_seconds: float | None = None,
 ) -> BacktestResult:
-    """`decision_interval_seconds=None` (default): unchanged Steps 4-8
+    """`decision_interval_seconds=None` (default): unchanged, original
     behavior -- the strategy is asked to decide after every background
     event. Set to a float to throttle decisions to fixed time boundaries
     instead (at most once per interval, on the first event whose
@@ -108,7 +108,7 @@ def run_backtest(
     (which only ever acted once per `decision_interval_seconds` during
     training) through the exact same execution mechanics as the hand-tuned
     strategies, for a decision-cadence-matched comparison. Since none of
-    Steps 4-6's strategies condition on wall-clock time, throttling their
+    the hand-tuned strategies condition on wall-clock time, throttling their
     decisions this way has no behavioral effect on them -- only the
     cadence of *opportunities* to change a quote is reduced, and their
     quote wouldn't have changed on a "quiet" tick anyway.
@@ -178,8 +178,8 @@ def run_backtest(
             # the strategy's *desired* quote doesn't change either, and it
             # would otherwise stay silently out of the market on that side
             # for the rest of the session despite having zero resting
-            # orders there -- a real bug this project's own Step 10
-            # testing caught, not a hypothetical.
+            # orders there -- a real bug this project's own testing
+            # caught, not a hypothetical.
             bid_missing = desired.bid_price is not None and not engine.book.has_order(AGENT_BID_ID)
             ask_missing = desired.ask_price is not None and not engine.book.has_order(AGENT_ASK_ID)
 

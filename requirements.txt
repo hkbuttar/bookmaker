@@ -23,6 +23,13 @@ bokeh>=3.5
 pytest>=8.0
 pytest-cov>=5.0
 
+# Research notebook
+jupyter>=1.0
+nbformat>=5.10
+nbclient>=0.10
+ipykernel>=6.29
+matplotlib>=3.9
+
 # Misc
 requests>=2.32
 websocket-client>=1.8

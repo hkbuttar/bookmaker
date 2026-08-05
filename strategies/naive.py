@@ -1,10 +1,11 @@
 """Baseline strategy: fixed spread around mid-price, fixed quote size, no
 inventory or adverse-selection awareness whatsoever.
 
-This is the control for the whole strategy comparison (Step 11): whatever
+This is the control for the whole strategy comparison: whatever
 P&L, fill rate, and adverse-selection cost this produces is what ignoring
-risk actually costs, which is the number Steps 5 and 6's added machinery
-has to beat to justify itself.
+risk actually costs, which is the number the inventory-aware and
+adverse-selection-aware strategies' added machinery has to beat to justify
+itself.
 """
 
 from __future__ import annotations

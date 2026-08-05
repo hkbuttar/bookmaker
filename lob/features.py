@@ -4,7 +4,7 @@ Consumes the flat `top_levels`-shaped DataFrame both data sources produce
 (`lob.engine.MatchingEngine.replay(...).book_snapshots` for synthetic/
 matching-engine replay, `data.binance_capture.capture_session(...).book_snapshots`
 for the Binance validation layer) -- same column schema, same feature code,
-no per-source glue needed by Step 11's dual-source comparison.
+no per-source glue needed by the dual-source comparison.
 
 Definitions (disclosed as choices, not the only valid ones):
 

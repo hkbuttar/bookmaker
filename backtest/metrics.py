@@ -1,10 +1,10 @@
 """Summary statistics for comparing strategy backtest runs.
 
-A plain dict of numbers, not a report -- Step 6 needs to compare fill rate
-and P&L against Steps 4-5's baselines, and Step 11 needs the same numbers
-assembled into a full strategy x latency x data-source table. Both want the
-same handful of stats out of a BacktestResult, so it lives here once rather
-than getting recomputed ad hoc at each comparison site.
+A plain dict of numbers, not a report -- comparing fill rate and P&L across
+strategies, and assembling those numbers into a full strategy x latency x
+data-source table, both want the same handful of stats out of a
+BacktestResult, so it lives here once rather than getting recomputed ad
+hoc at each comparison site.
 """
 
 from __future__ import annotations
@@ -27,8 +27,8 @@ def adverse_selection_cost(result: BacktestResult, horizon_events: int = 20) -> 
     strategy off); negative = the fills were, on average, favorably timed.
     Only maker fills count -- adverse selection is specifically about
     resting orders getting hit by better-informed flow, not about a
-    strategy's own (currently nonexistent, for Steps 4-6) aggressive
-    taker orders. Returns None if there are no maker fills, or none with
+    strategy's own (currently nonexistent, for the hand-tuned strategies)
+    aggressive taker orders. Returns None if there are no maker fills, or none with
     a defined future mid-price to markout against (e.g. right at the end
     of the session).
     """
@@ -50,6 +50,30 @@ def adverse_selection_cost(result: BacktestResult, horizon_events: int = 20) -> 
         costs.append(cost)
 
     return float(np.mean(costs)) if costs else None
+
+
+def sharpe_ratio(result: BacktestResult) -> float | None:
+    """Per-step Sharpe: mean(equity changes) / std(equity changes) across
+    consecutive portfolio_history rows. Deliberately NOT annualized --
+    sessions here range from minutes to hours, not trading years, and
+    "decision steps" aren't a standard annualization unit -- this is a
+    within-session risk-adjusted-return proxy for comparing strategies
+    against each other on the *same* session, not a figure comparable to
+    a conventional annualized Sharpe ratio from other contexts.
+
+    Rows where equity is NaN (inventory held but unmarkable, see
+    backtest.portfolio.equity_from) are dropped before differencing.
+    Returns None if fewer than 2 valid equity observations remain, or
+    equity never changed at all (e.g. a strategy with zero fills, where
+    "risk-adjusted return" is undefined, not zero).
+    """
+    equity = result.portfolio_history["equity"].dropna()
+    if len(equity) < 2:
+        return None
+    changes = equity.diff().dropna()
+    if len(changes) < 2 or changes.std() == 0:
+        return None
+    return float(changes.mean() / changes.std())
 
 
 def summarize(result: BacktestResult, adverse_selection_horizon_events: int = 20) -> dict:
@@ -75,4 +99,5 @@ def summarize(result: BacktestResult, adverse_selection_horizon_events: int = 20
         "inventory_std": inventory_series.std(),
         "equity_std": equity_series.std(),
         "adverse_selection_cost": adverse_selection_cost(result, adverse_selection_horizon_events),
+        "sharpe_ratio": sharpe_ratio(result),
     }

@@ -1,12 +1,12 @@
 """Strategy interface shared by naive/inventory-aware/adverse-selection-aware
-(Steps 4-6) and, later, the RL policy (Step 9) via a thin adapter.
+and, later, the RL policy via a thin adapter.
 
 The split is deliberate: a Strategy only ever *decides* -- given the
 current market state, what should my resting bid/ask be right now? -- and
 never touches the book, order ids, or fill accounting directly. That's all
 owned by `backtest.market_maker_sim`, which is what makes strategies
 comparable: every strategy runs through identical order-submission,
-cancellation, and P&L-accounting mechanics, so differences in the Step 11
+cancellation, and P&L-accounting mechanics, so differences in the
 comparison table are differences in quoting *logic*, not in simulator
 plumbing.
 """
@@ -40,8 +40,8 @@ class MarketState:
 class Quote:
     """A strategy's desired resting quote. Either side can be omitted
     (price=None) to mean "don't quote that side right now" -- e.g. an
-    adverse-selection-aware strategy (Step 6) pulling one side under
-    one-sided order flow, or an inventory-aware strategy (Step 5) skewing
+    adverse-selection-aware strategy pulling one side under
+    one-sided order flow, or an inventory-aware strategy skewing
     so far it stops quoting into its own risk.
     """
 

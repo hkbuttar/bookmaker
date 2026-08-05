@@ -5,8 +5,8 @@ project's core value is mechanism, not proving a real trading edge exists
 -- matching-engine correctness, latency effects, and RL-vs-heuristics
 comparisons all depend on controllable, unlimited order flow, not on any
 specific real instrument. Synthetic data is the primary source because it
-gives full control over regime (calm vs. stressed order flow) for Step 8's
-latency sweep and Step 11's robustness testing, with zero licensing
+gives full control over regime (calm vs. stressed order flow) for the
+latency sweep and robustness testing, with zero licensing
 friction. Real LOBSTER equity data was investigated and ruled out on cost
 (it now requires a paid subscription or metered "lobster-data-coin"
 credits). Real order book data is still used, as a secondary validation
@@ -18,7 +18,7 @@ microstructure literature (e.g. Cont, Stoikov & Talreja's queue-reactive
 model; Avellaneda-Stoikov-style order placement), not fitted to any
 specific stock. That is a disclosed judgment call, not an empirical fact.
 
-Order arrival rates were recalibrated during Step 8 (latency modeling).
+Order arrival rates were recalibrated after latency modeling was added.
 The original rates (2.0/sec limit, 0.3/sec market) produced a mean
 inter-event gap of ~230ms -- coarser than even the slowest (50ms) latency
 preset in lob/latency.py, so a strategy's delayed order almost always
@@ -31,7 +31,7 @@ cadence, showed clear, monotonic P&L degradation). The rates below are
 studies is comparable to or larger than the data's own event spacing --
 still a disclosed, illustrative choice, not fitted to a specific measured
 market, but now at least internally consistent with the latency scale
-Step 8 actually sweeps.
+actually swept.
 
 Model (a simplified queue-reactive / reduced-form model):
 
@@ -53,12 +53,12 @@ Model (a simplified queue-reactive / reduced-form model):
   fills, since it has no matching logic itself.
 - Market orders arrive as an independent Poisson process with their own
   side and lognormal size distribution.
-- A `regime` multiplier lets Step 8/11 stress the same model (higher
+- A `regime` multiplier lets later analysis stress the same model (higher
   arrival rates, higher volatility, thinner depth) without a different
   code path.
 
 Output is a single time-sorted DataFrame of events, order_id-linked, ready
-to be replayed through lob/ (Step 2/3).
+to be replayed through lob/.
 """
 
 from __future__ import annotations
@@ -91,9 +91,9 @@ class SyntheticLOBConfig:
     # relative to the reference mid.
     half_spread_ticks: float = 2.0
 
-    # Poisson rates, events per second. ~25x the original Step 1 values --
-    # see the module docstring's "Order arrival rates were recalibrated
-    # during Step 8" note for why.
+    # Poisson rates, events per second. ~25x the original values -- see
+    # the module docstring's "Order arrival rates were recalibrated" note
+    # for why.
     limit_order_rate: float = 50.0
     market_order_rate: float = 7.5
 

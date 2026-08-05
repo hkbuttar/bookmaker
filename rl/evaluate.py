@@ -1,4 +1,4 @@
-"""Evaluates a trained RL policy against Steps 4-6's hand-tuned baselines
+"""Evaluates a trained RL policy against the hand-tuned baselines
 using identical mechanics, via `RLStrategyAdapter`: a `Strategy` wrapper
 around a trained SB3 model, so it can run through the exact same
 `backtest.market_maker_sim.run_backtest` + `backtest.metrics.summarize`
@@ -7,16 +7,16 @@ pipeline as every other strategy in this project.
 Decision cadence is the one thing deliberately *not* left at each
 strategy's native default for this comparison: the RL agent only ever
 learned to act once per `decision_interval_seconds` (see rl/env.py), so
-evaluating it at every background event (as Steps 4-8 do for hand-tuned
-strategies) would ask it to decide far more often than it was trained
+evaluating it at every background event (as the hand-tuned strategies do
+natively) would ask it to decide far more often than it was trained
 for -- not a fair test of the policy, and not even well-defined (it was
 never shown observations at that granularity). `run_backtest`'s
 `decision_interval_seconds` parameter (added for this) throttles the
-baselines to the same cadence, so every strategy in a Step 9 comparison
-runs under identical decision-frequency rules. This means Step 9's
-baseline numbers are not directly comparable to Steps 4-8's own reported
-numbers (which use native per-event cadence) -- a disclosed, intentional
-difference, not an inconsistency.
+baselines to the same cadence, so every strategy in this comparison
+runs under identical decision-frequency rules. This means these
+baseline numbers are not directly comparable to the hand-tuned strategies'
+own natively-reported numbers (which use native per-event cadence) -- a
+disclosed, intentional difference, not an inconsistency.
 """
 
 from __future__ import annotations

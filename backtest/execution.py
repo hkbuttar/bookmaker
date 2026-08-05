@@ -1,7 +1,7 @@
 """Shared order-submission/fill-attribution mechanics for anything that puts
 a single agent's resting quotes into a live OrderBook alongside background
-flow: `backtest.market_maker_sim` (Steps 4-8's strategies) and `rl.env`
-(Step 9's RL policy) both need exactly this, so it lives here once rather
+flow: `backtest.market_maker_sim` (the hand-tuned strategies) and `rl.env`
+(the RL policy) both need exactly this, so it lives here once rather
 than being reimplemented per caller.
 
 The agent's bid/ask live at two fixed sentinel order ids, since an agent

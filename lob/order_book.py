@@ -15,8 +15,8 @@ matching loop here is the place to rewrite with primitive arrays under numba
 
 This module only knows about `arrival_time`: it has no concept of when a
 strategy *decided* to submit or cancel an order. That separation is enforced
-one layer up, in `lob/engine.py`, which is what lets Step 8 slot in a
-stochastic latency model later without touching matching logic at all.
+one layer up, in `lob/engine.py`, which is what lets a stochastic latency
+model slot in later without touching matching logic at all.
 """
 
 from __future__ import annotations
@@ -176,8 +176,8 @@ class OrderBook:
 
         Uses SortedDict's key-view slicing to grab only the top `n_levels`
         prices directly, rather than materializing every resting price
-        level on the book -- this runs once per replayed event (Step 3
-        records book state after every event), so it needs to stay
+        level on the book -- this runs once per replayed event (book state
+        is recorded after every event), so it needs to stay
         O(n_levels), not O(all resting levels).
         """
         bid_prices = list(reversed(self.bids.keys()[-n_levels:])) if self.bids else []
@@ -192,7 +192,7 @@ class OrderBook:
         doesn't have. Deliberately the same shape as
         data/binance_capture.py's LocalOrderBook.top_levels, so book state
         from either data source can feed the same replay/feature code
-        (Step 11 compares strategies across both).
+        when comparing strategies across both.
         """
         d = self.depth(n_levels)
         row: dict[str, float] = {}

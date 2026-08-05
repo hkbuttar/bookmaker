@@ -26,8 +26,8 @@ in published microstructure literature, not a derived optimum for this
 specific synthetic data.
 
 Deliberately independent of inventory: this strategy does not skew off
-inventory at all, even though InventoryAwareStrategy (Step 5) does. Keeping
-the two mechanisms in separate classes means Step 11's comparison table can
+inventory at all, even though InventoryAwareStrategy does. Keeping
+the two mechanisms in separate classes means the comparison table can
 attribute P&L/fill-rate/adverse-selection-cost differences to each
 mechanism individually, rather than reporting on a strategy that already
 conflates the two.

@@ -123,9 +123,10 @@ def test_delayed_requote_interacts_with_book_as_it_actually_was_at_arrival():
     # strategy's decision never saw. If the delayed order is matched
     # against the book as it was at *decision* time, nothing crosses. If
     # it's matched against the book as it actually is at *arrival* time
-    # (the Step 8 claim), it should immediately cross the 97.20 ask as a
-    # taker -- proving latency-induced staleness has a real, observable
-    # consequence, not just a delayed timestamp.
+    # (the plan's "replay book state forward" claim), it should
+    # immediately cross the 97.20 ask as a taker -- proving
+    # latency-induced staleness has a real, observable consequence, not
+    # just a delayed timestamp.
     events = pd.DataFrame(
         [
             _event(1, 0.0, "LIMIT", "SELL", 99.00, 10),
@@ -152,8 +153,8 @@ def test_out_of_order_arrivals_last_to_arrive_wins_not_last_decided():
     # (t=2.0, decided *after* A) is delayed lightly (arrives at t=3) --
     # so B lands first, then A lands later and overwrites it. The engine
     # should end up resting at A's prices, proving arrival order controls
-    # final book state, not decision order (same claim as Step 2's
-    # engine-level test, now exercised through the full interactive sim).
+    # final book state, not decision order (same claim as the matching
+    # engine's own test, now exercised through the full interactive sim).
     events = pd.DataFrame(
         [
             _event(1, 0.0, "LIMIT", "SELL", 99.00, 10),
@@ -241,7 +242,7 @@ def test_decision_interval_none_is_default_and_unthrottled():
 
 
 def test_resubmits_after_full_fill_even_when_market_state_looks_unchanged():
-    # Regression test for a real bug found during Step 10 testing: the
+    # Regression test for a real bug found during this project's testing: the
     # "only requote when the desired quote changes" optimization compared
     # against the *decided* quote, not whether it was still resting. If a
     # strategy's resting order got fully filled but another order (here,

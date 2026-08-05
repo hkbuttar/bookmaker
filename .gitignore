@@ -23,3 +23,5 @@ data/binance_sample/
 
 # OS
 .DS_Store
+
+notebooks/_build_notebook.py

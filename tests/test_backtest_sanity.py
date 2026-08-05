@@ -1,10 +1,10 @@
-"""Backtest sanity checks (Step 10): does a strategy's fill rate and P&L
+"""Backtest sanity checks: does a strategy's fill rate and P&L
 behave the way it obviously should under known conditions? These are
 deliberately different in kind from the scenario/mechanics tests in
 tests/test_market_maker_sim.py -- those pin down exact fills for hand-built
 event sequences; these check aggregate, statistical properties (monotonicity,
 zero-in-zero-out) against the real synthetic generator, which is closer to
-how a real bug (like the one this step actually found -- see
+how a real bug (like the one this project actually found -- see
 test_market_maker_sim.py's and test_rl_env.py's FIFO-priority regression
 tests) would first become visible: not a wrong individual fill, but an
 aggregate number that's obviously off once you know what to expect.

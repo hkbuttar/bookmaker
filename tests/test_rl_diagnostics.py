@@ -16,8 +16,9 @@ def _healthy_run(n=200, seed=0):
 
 def _unstable_run(n=200, seed=0):
     rng = np.random.default_rng(seed)
-    # Mimics Step 9's actual first failed run: variance grows over
-    # training instead of shrinking, no sustained improvement.
+    # Mimics an actual first failed RL training run from this project:
+    # variance grows over training instead of shrinking, no sustained
+    # improvement.
     rewards = rng.normal(-300, 200 + 400 * np.linspace(0, 1, n), size=n)
     inventory_stds = rng.normal(20, 5, size=n).clip(min=0)
     return list(rewards), list(inventory_stds)

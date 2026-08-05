@@ -33,7 +33,7 @@ def test_gymnasium_check_env_passes():
 
 def test_action_and_observation_space_shapes():
     env = MarketMakingEnv(_small_events())
-    assert env.action_space.n == N_ACTIONS == 16
+    assert env.action_space.n == N_ACTIONS == 10
     assert env.observation_space.shape == (7,)
 
 
@@ -178,14 +178,14 @@ def test_latency_delays_agent_order_arrival_effect():
     #                    mid_price is still None here (ask-only book).
     #   step 1 (noop)-> boundary t=2.0: processes event@1.0 (bid=97.00) ->
     #                    mid=98.00 now available. event@2.0 held back.
-    #   step 2 (real)-> decision at t=2.0, offset=10 ticks -> bid=97.90.
+    #   step 2 (real)-> decision at t=2.0, offset=3 ticks -> bid=97.97.
     #                    Scheduled to arrive at t=52.0. This step's advance
     #                    to boundary t=3.0 processes event@2.0 (ask=97.20)
     #                    -- background data is now exhausted, but our bid
     #                    hasn't arrived yet, so no fill this step.
     #   step 3 (noop)-> background is exhausted, so _advance drains all
     #                    remaining pending immediately regardless of the
-    #                    nominal boundary: our bid (97.90) arrives and
+    #                    nominal boundary: our bid (97.97) arrives and
     #                    crosses the resting 97.20 ask.
     events = pd.DataFrame(
         [
@@ -200,7 +200,7 @@ def test_latency_delays_agent_order_arrival_effect():
     env.reset(seed=0)
     env.step(NO_QUOTE_ACTION)
 
-    action = ACTION_TABLE.index((10, 20))  # bid = mid(98.00) - 0.10 = 97.90
+    action = ACTION_TABLE.index((3, 20))  # bid = mid(98.00) - 0.03 = 97.97
     env.step(action)
     _, _, terminated, _, _ = env.step(NO_QUOTE_ACTION)
 
@@ -212,7 +212,7 @@ def test_latency_delays_agent_order_arrival_effect():
 
 
 def test_repeating_the_same_action_preserves_fifo_priority():
-    # Regression test for a real bug found during Step 10 testing: step()
+    # Regression test for a real bug found during this project's testing: step()
     # originally scheduled a fresh cancel+resubmit on *every* call
     # regardless of whether the action's resulting quote actually changed
     # -- unlike backtest.market_maker_sim's strategies, which only touch

@@ -1,7 +1,7 @@
-"""Gymnasium market-making environment (Step 9).
+"""Gymnasium market-making environment.
 
 Reuses the exact same book/portfolio/latency machinery as
-`backtest.market_maker_sim` (Steps 4-8) via `backtest.execution`'s shared
+`backtest.market_maker_sim` via `backtest.execution`'s shared
 fill-attribution and requote-application helpers -- the RL agent's resting
 orders live at the same sentinel ids, in the same kind of OrderBook, and
 under the same decision/arrival-time latency model as every hand-tuned
@@ -10,7 +10,7 @@ Strategy gets asked for a fresh quote after every background event; an RL
 agent instead acts at a fixed decision cadence (`decision_interval_seconds`,
 default 1s), because per-background-event decisions would mean hundreds of
 thousands of steps per training episode at this project's recalibrated
-(Step 8) event density -- intractable for CPU training in "minutes to low
+event density -- intractable for CPU training in "minutes to low
 hours." One `step()` call processes every background event and every due
 in-flight requote arrival between the previous decision boundary and the
 next, in true arrival order (the same merge-loop idea as
@@ -51,14 +51,26 @@ mid_price and spread already in the state (bid = mid - spread/2, ask = mid
 redundant, collinear inputs -- a disclosed simplification relative to the
 plan's literal feature list, not an oversight.
 
-Action (Discrete(16)): a single symmetric (bid, ask) offset from mid-price
-in `{1,2,3,5,10}` ticks combined with a quote size in `{5,10,20}` shares
-(small/medium/large), 15 combinations, plus one explicit "quote nothing"
+Action (Discrete(10)): a single symmetric (bid, ask) offset from mid-price
+in `{1,2,3}` ticks combined with a quote size in `{5,10,20}` shares
+(small/medium/large), 9 combinations, plus one explicit "quote nothing"
 action -- giving the agent the option to learn defensive pulling on its
-own, the way Step 6 hand-codes it. One shared offset for both sides (not
-independent bid/ask offsets) keeps the action space small enough to train
-in minutes on CPU; this is the discrete action space the plan calls for as
-the first thing to try before reaching for continuous actions (PPO).
+own, the way the adverse-selection-aware strategy hand-codes it. One shared
+offset for both sides (not independent bid/ask offsets) keeps the action
+space small enough to train in minutes on CPU; this is the discrete action
+space the plan calls for as the first thing to try before reaching for
+continuous actions (PPO).
+
+The offset choices were narrowed from an original `{1,2,3,5,10}` after a
+concrete, diagnosed failure: with the wider set, the trained policy
+consistently converged on offsets around 5 ticks, which the
+recalibrated (deep, high-frequency) order flow makes practically
+unreachable -- measured resting depth was ~6,280 shares within 2 ticks of
+the touch vs. ~35,511 within 5, against ~100-150-share typical market
+orders. The policy wasn't wrong given its reward; it just had an escape
+hatch into a region of the book where "quote" and "never trade" are
+reward-equivalent. Removing 5 and 10 ticks removes that hatch -- every
+remaining action is at least plausibly reachable.
 
 Reward: realized P&L over the step (mark-to-mid equity delta) minus an
 inventory-risk penalty (see rl/reward.py). The plan's stated formula is a
@@ -89,7 +101,7 @@ step_pnl. This was not in the plan's original reward formula -- it was
 added after diagnosing that a trained policy, evaluated deterministically,
 produced literally zero fills across seven independent evaluation windows
 despite the hand-tuned baselines reliably getting 9-16 in each. Root
-cause: Step 8's recalibrated (higher-frequency) background order flow
+cause: the recalibrated (higher-frequency) background order flow
 means resting depth several ticks from the touch accumulates into the
 thousands of shares (measured: ~6,280 shares within 2 ticks of the best
 ask vs. ~35,511 within 5 ticks, against a ~100-150 share typical market
@@ -124,7 +136,7 @@ from rl.observation import N_FEATURES, build_observation
 from rl.reward import huber_inventory_penalty
 from strategies.base import Quote, round_to_tick
 
-OFFSET_CHOICES_TICKS: tuple[int, ...] = (1, 2, 3, 5, 10)
+OFFSET_CHOICES_TICKS: tuple[int, ...] = (1, 2, 3)
 SIZE_CHOICES: tuple[int, ...] = (5, 10, 20)
 
 ACTION_TABLE: list[tuple[int, int] | None] = [
@@ -192,6 +204,15 @@ class MarketMakingEnv(gym.Env):
 
         self._engine: MatchingEngine | None = None
         self._portfolio: Portfolio | None = None
+
+    def set_inventory_penalty_lambda(self, value: float) -> None:
+        """Mutate the penalty weight mid-training. Exists for curriculum
+        schedules (see rl.train.InventoryPenaltyCurriculumCallback): called
+        via VecEnv.env_method, which reaches this through Monitor's
+        attribute-forwarding __getattr__ rather than needing the wrapper
+        to know this method exists.
+        """
+        self.inventory_penalty_lambda = value
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         super().reset(seed=seed)

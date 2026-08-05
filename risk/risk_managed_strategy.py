@@ -11,7 +11,7 @@ already resting via an aggressive market order the way alpha-signal-lab's
 backtest engine does (portfolio.flatten_orders()). Doing that here would
 mean extending the Strategy/Quote interface to let a strategy emit a
 taker order, not just a resting quote -- a real architectural change,
-not a Step 7-sized one. So: past the kill-switch, the strategy stops
+not a small one. So: past the kill-switch, the strategy stops
 adding to its book presence and existing inventory just sits there,
 marked to whatever the market does next, until a human calls reset().
 """

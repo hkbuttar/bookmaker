@@ -3,7 +3,7 @@
 Data source decision (see README "Data" section and synthetic_lob.py's
 docstring for the primary-source rationale): this module captures real
 order book and trade data from Binance's public market-data API, used to
-validate that Step 4-6's strategy comparisons and Step 11's findings hold
+validate that the hand-tuned strategy comparisons and their findings hold
 up on real data, not just the synthetic generator's regimes. It is a
 validation layer, not the primary source, and its findings are scoped to
 crypto microstructure specifically -- see the granularity/market-structure

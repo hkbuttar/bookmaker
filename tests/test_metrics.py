@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 
 from backtest.market_maker_sim import BacktestResult, run_backtest
-from backtest.metrics import adverse_selection_cost, summarize
+from backtest.metrics import adverse_selection_cost, sharpe_ratio, summarize
 from backtest.portfolio import Portfolio, Trade
 from lob.models import Side
 from strategies.naive import NaiveSymmetricStrategy
@@ -123,3 +123,51 @@ def test_adverse_selection_cost_clips_horizon_to_end_of_book():
     result = _result_with_trades(trades, _book_snapshots(book_rows))
     cost = adverse_selection_cost(result, horizon_events=1000)
     assert cost == pytest.approx(100.0 - 99.00, abs=1e-9)
+
+
+def _result_with_equity(equity_values: list[float]) -> BacktestResult:
+    return BacktestResult(
+        portfolio=Portfolio(),
+        portfolio_history=pd.DataFrame({"equity": equity_values}),
+        book_snapshots=pd.DataFrame({"time": [], "bid_price_1": [], "ask_price_1": []}),
+    )
+
+
+def test_sharpe_ratio_matches_hand_computed_value():
+    # equity: 0, 1, 0, 2 -> changes: +1, -1, +2 -> mean=2/3, std (population... )
+    result = _result_with_equity([0.0, 1.0, 0.0, 2.0])
+    changes = pd.Series([1.0, -1.0, 2.0])
+    expected = changes.mean() / changes.std()
+    assert sharpe_ratio(result) == pytest.approx(expected)
+
+
+def test_sharpe_ratio_none_with_fewer_than_two_equity_points():
+    assert sharpe_ratio(_result_with_equity([5.0])) is None
+    assert sharpe_ratio(_result_with_equity([])) is None
+
+
+def test_sharpe_ratio_none_when_equity_never_changes():
+    # A strategy with zero fills: equity stays at exactly 0 throughout.
+    result = _result_with_equity([0.0, 0.0, 0.0, 0.0])
+    assert sharpe_ratio(result) is None
+
+
+def test_sharpe_ratio_drops_nan_equity_rows():
+    result = _result_with_equity([0.0, float("nan"), 2.0, 5.0])
+    changes = pd.Series([2.0, 3.0])  # after dropping the NaN row: 0 -> 2 -> 5
+    expected = changes.mean() / changes.std()
+    assert sharpe_ratio(result) == pytest.approx(expected)
+
+
+def test_summarize_includes_sharpe_ratio():
+    events = pd.DataFrame(
+        [
+            _event(1, 0.0, "LIMIT", "SELL", 99.00, 10),
+            _event(2, 1.0, "LIMIT", "BUY", 97.00, 10),
+            _event(3, 2.0, "MARKET", "BUY", size=5),
+        ]
+    )
+    strategy = NaiveSymmetricStrategy(half_spread=0.5, quote_size=20)
+    result = run_backtest(events, strategy)
+    stats = summarize(result)
+    assert "sharpe_ratio" in stats

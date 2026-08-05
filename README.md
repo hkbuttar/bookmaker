@@ -14,8 +14,8 @@ models), not fitted to any specific stock — a disclosed judgment call, not
 an empirical fact. This is the primary source because the project's core
 value is mechanism (matching-engine correctness, latency effects, RL vs.
 heuristics), which needs unlimited volume and controllable regimes (a
-`regime="stressed"` knob raises arrival rates/volatility for Step 8's
-latency sweep and Step 11's robustness testing), not a specific real
+`regime="stressed"` knob raises arrival rates/volatility for the latency
+sweep and robustness testing), not a specific real
 instrument. Real LOBSTER equity data was investigated and ruled out on
 cost: lobsterdata.com now gates all downloads behind a paid university
 subscription or an approval-gated academic trial billed per MB in
@@ -28,7 +28,7 @@ unauthenticated market-data mirror (`data-api.binance.vision` /
 `api.binance.com` host is geo-blocked from where this was built).
 Reconstructs a local order book from a REST snapshot + WebSocket diff
 stream per Binance's documented reconciliation procedure, alongside the
-real trade tape. Used to check whether Step 11's findings on synthetic
+real trade tape. Used to check whether findings on synthetic
 data hold up on real market data, not as the primary dataset. Two
 limitations to keep in mind when reading those results: (1) Binance's
 public feed is price-level aggregated, not per-order, so it can validate
