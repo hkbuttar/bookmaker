@@ -4,9 +4,17 @@
 # so these two services don't call each other and need no shared secrets
 # beyond DATABASE_URL. RL training/populate.py runs offline, not as a
 # Render service -- see README's Deployment section.
+#
+# region is pinned (not left to each resource's own default) on every
+# resource below: Render's internal/private networking -- which is what
+# `fromDatabase: connectionString` wires the services to -- only routes
+# within a single region, so the database and both services must land in
+# the same one explicitly or a fresh deploy can lose that race and the
+# backend times out connecting on startup.
 databases:
   - name: bookmaker-db
     plan: free
+    region: oregon
     databaseName: bookmaker
     user: bookmaker
 
@@ -15,6 +23,7 @@ services:
     type: web
     runtime: python
     plan: free
+    region: oregon
     buildCommand: pip install -r requirements-deploy.txt
     startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
@@ -30,6 +39,7 @@ services:
     type: web
     runtime: python
     plan: free
+    region: oregon
     buildCommand: pip install -r requirements-deploy.txt
     # --allow-websocket-origin: Bokeh rejects cross-origin websocket
     # upgrades by default; RENDER_EXTERNAL_HOSTNAME is auto-injected by

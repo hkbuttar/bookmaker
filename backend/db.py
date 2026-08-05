@@ -11,8 +11,10 @@ API's own endpoints, so it stays queryable on its own.
 from __future__ import annotations
 
 import os
+import time
 
 from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./bookmaker.db")
@@ -49,8 +51,27 @@ def get_db():
         db.close()
 
 
-def init_db() -> None:
-    """Create all tables if they don't already exist. Idempotent."""
+def init_db(max_attempts: int = 6, initial_delay: float = 1.0) -> None:
+    """Create all tables if they don't already exist. Idempotent.
+
+    Retries with exponential backoff on OperationalError: on a fresh
+    Render Blueprint deploy, the web service and its Postgres database
+    are provisioned together, and the database isn't always done coming
+    up (or its DNS/networking hasn't settled) by the time this runs at
+    app startup -- a bare first attempt can lose that race and take the
+    whole deploy down over what's really just a few seconds of "not
+    ready yet." ~1+2+4+8+16 = 31s of total backoff comfortably covers
+    that without masking a genuinely unreachable database forever.
+    """
     from backend import db_models  # noqa: F401  (registers models on Base.metadata)
 
-    Base.metadata.create_all(bind=engine)
+    delay = initial_delay
+    for attempt in range(1, max_attempts + 1):
+        try:
+            Base.metadata.create_all(bind=engine)
+            return
+        except OperationalError:
+            if attempt == max_attempts:
+                raise
+            time.sleep(delay)
+            delay *= 2
