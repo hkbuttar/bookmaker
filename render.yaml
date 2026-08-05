@@ -1,0 +1,50 @@
+# Render Blueprint: two stateless web services (FastAPI backend, Bokeh
+# dashboard) sharing one Postgres database. The dashboard talks straight
+# to the database (frontend/data_access.py), not through the backend API,
+# so these two services don't call each other and need no shared secrets
+# beyond DATABASE_URL. RL training/populate.py runs offline, not as a
+# Render service -- see README's Deployment section.
+databases:
+  - name: bookmaker-db
+    plan: free
+    databaseName: bookmaker
+    user: bookmaker
+
+services:
+  - name: bookmaker-backend
+    type: web
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements-deploy.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.14.2"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: bookmaker-db
+          property: connectionString
+
+  - name: bookmaker-frontend
+    type: web
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements-deploy.txt
+    # --allow-websocket-origin: Bokeh rejects cross-origin websocket
+    # upgrades by default; RENDER_EXTERNAL_HOSTNAME is auto-injected by
+    # Render for every web service, so this doesn't need to be typed in
+    # by hand or known before the first deploy.
+    # --use-xheaders: trust the X-Forwarded-* headers Render's proxy
+    # sets, so Bokeh sees the real client scheme/host instead of the
+    # internal proxy connection.
+    startCommand: >-
+      bokeh serve frontend --port $PORT --address 0.0.0.0
+      --allow-websocket-origin=$RENDER_EXTERNAL_HOSTNAME --use-xheaders
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.14.2"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: bookmaker-db
+          property: connectionString

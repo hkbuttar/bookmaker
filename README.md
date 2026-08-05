@@ -38,3 +38,43 @@ generator's events do; (2) crypto trades 24/7 with different tick/lot
 conventions and materially lighter regulation than equities, so a finding
 that replicates here is evidence the mechanism generalizes past one
 synthetic model, not a claim that it holds for equities markets.
+
+## Deployment
+
+Two independent, stateless web services sharing one Postgres database --
+the dashboard (`frontend/`) reads the database directly rather than
+through the backend API, so the two services never call each other and
+share nothing but `DATABASE_URL`. RL training is a one-time offline job,
+not a deployed service.
+
+**One command via Render's Blueprint** (`render.yaml`, repo root): push
+this repo to GitHub, then in the Render dashboard choose *New > Blueprint*
+and point it at the repo. It provisions a free Postgres instance and both
+services (`bookmaker-backend`, a FastAPI/uvicorn app; `bookmaker-frontend`,
+`bokeh serve`), wiring `DATABASE_URL` between them automatically. Both
+build from `requirements-deploy.txt`, a lean subset of `requirements.txt`
+-- neither service imports `rl/`, so torch/gymnasium/stable-baselines3
+(large, slow to install) are left out of the deploy image; that split is
+enforced by `backend/populate.py` being the only module that imports `rl.*`.
+
+**Populate the database once, after the first deploy** -- the comparison
+table, RL training curves, and order-book-depth demo runs are all
+precomputed (a full sweep takes minutes; training longer), not something
+either service computes on request:
+```bash
+DATABASE_URL=<external connection string from the Render Postgres dashboard> python3 -m backend.populate
+```
+Run this from a machine with the full `requirements.txt` installed (it
+needs torch/stable-baselines3 to train the RL policies) -- it's a
+one-time local/CI step against the deployed database, not something that
+runs inside either Render service. Re-run it any time to refresh the
+numbers; it adds fresh rows rather than erroring, but doesn't deduplicate,
+so point it at a fresh database (or manually clear the tables) for a
+clean rebuild.
+
+**Known trade-off:** both services and the database default to Render's
+free plan in `render.yaml` -- free web services spin down after periods of
+inactivity (a cold start delays the first request) and free Postgres
+instances expire after a fixed window. Fine for a portfolio deployment;
+bump `plan:` to a paid tier for anything that needs to stay warm or
+persist indefinitely.

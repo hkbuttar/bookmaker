@@ -42,6 +42,15 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="BookMaker API", description="Limit order book market-making simulator API", lifespan=lifespan)
 
 
+@app.get("/health")
+def health() -> dict:
+    """Liveness check for the deployment platform -- deliberately doesn't
+    touch the database, so a slow/cold DB connection doesn't get read as
+    the process being down.
+    """
+    return {"status": "ok"}
+
+
 @app.post("/simulate", response_model=SimulateResponse)
 def simulate(request: SimulateRequest, db: Session = Depends(get_db)) -> SimulateResponse:
     try:

@@ -1,0 +1,24 @@
+# Runtime dependencies for the two deployed web services (backend/,
+# frontend/) only -- not RL training, the notebook, or tests. Neither
+# service imports rl/, so torch/gymnasium/stable-baselines3 (large, slow
+# to install) are deliberately left out; run `pip install -r
+# requirements.txt` for the full dev/training environment instead.
+# Keep in sync with requirements.txt by hand -- these are a subset, not
+# a separate dependency set.
+
+# Core numerics -- numba powers lob/order_book.py's matching-engine hot
+# loop, which backend/simulate.py's backtests run on every request.
+numpy>=2.0
+pandas>=2.2
+numba>=0.66
+sortedcontainers>=2.4
+
+# Backend
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.8
+sqlalchemy>=2.0
+psycopg2-binary>=2.9
+
+# Frontend
+bokeh>=3.5
