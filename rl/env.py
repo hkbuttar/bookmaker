@@ -116,7 +116,7 @@ import gymnasium as gym
 import numpy as np
 import pandas as pd
 
-from backtest.execution import apply_requote, attribute_fills
+from backtest.execution import AGENT_ASK_ID, AGENT_BID_ID, apply_requote, attribute_fills
 from backtest.portfolio import Portfolio
 from lob.engine import LatencyModel, MatchingEngine, zero_latency
 from lob.features import imbalance_from_row, mid_and_spread_from_row
@@ -204,6 +204,7 @@ class MarketMakingEnv(gym.Env):
         self._mid_history: deque[float] = deque(maxlen=self.realized_vol_window + 1)
         self._last_mid_price: float | None = None
         self._initial_mid_price: float | None = None
+        self._last_decided_quote: Quote | None = None
 
         self._advance()
         obs = self._get_observation()
@@ -215,8 +216,21 @@ class MarketMakingEnv(gym.Env):
 
         quote = self._decode_action(action)
         decision_time = self._t
-        arrival_time = self.strategy_latency(decision_time)
-        heapq.heappush(self._pending, (arrival_time, next(self._seq_counter), decision_time, quote))
+
+        # Only actually touch the book when the chosen quote differs from
+        # what's already resting (or a side we want quoted isn't resting
+        # anymore, e.g. a full fill) -- matching backtest.market_maker_sim's
+        # discipline. Scheduling a fresh cancel+resubmit every single
+        # decision regardless of whether anything changed was an early
+        # bug: it cost the agent FIFO queue priority on every step, making
+        # competitive quotes far less likely to ever fill purely as an
+        # artifact of this loop, not the policy's actual quoting choice.
+        bid_missing = quote.bid_price is not None and not self._engine.book.has_order(AGENT_BID_ID)
+        ask_missing = quote.ask_price is not None and not self._engine.book.has_order(AGENT_ASK_ID)
+        if quote != self._last_decided_quote or bid_missing or ask_missing:
+            arrival_time = self.strategy_latency(decision_time)
+            heapq.heappush(self._pending, (arrival_time, next(self._seq_counter), decision_time, quote))
+            self._last_decided_quote = quote
 
         equity_before = self._portfolio.equity(self._last_mid_price)
         trades_before = len(self._portfolio.trades)

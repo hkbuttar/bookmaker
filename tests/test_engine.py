@@ -112,3 +112,23 @@ def test_book_snapshots_recorded_one_row_per_event_reflecting_state_after_it():
     row2 = result.book_snapshots.iloc[2]
     assert pd.isna(row2["bid_price_1"])
     assert row2["ask_price_1"] == 100.05
+
+
+def test_order_id_breaks_ties_at_identical_arrival_and_decision_time():
+    # Two orders with the exact same decision_time (and, at zero latency,
+    # the same arrival_time) must still resolve deterministically -- the
+    # sort key's final tiebreak is order_id, ascending. Listed here in
+    # descending order_id to make sure it's really the sort doing the
+    # work, not just "first row in the DataFrame wins."
+    events = pd.DataFrame(
+        [
+            _event(5, 0.0, "LIMIT", "SELL", 99.00, 5),
+            _event(2, 0.0, "LIMIT", "SELL", 99.00, 5),
+            _event(10, 1.0, "MARKET", "BUY", size=5),
+        ]
+    )
+    engine = MatchingEngine()
+    result = engine.replay(events)
+
+    assert len(result.fills) == 1
+    assert result.fills[0].maker_order_id == 2  # lower order_id wins the tie, not input row order

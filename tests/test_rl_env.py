@@ -209,3 +209,35 @@ def test_latency_delays_agent_order_arrival_effect():
     trade = env._portfolio.trades[0]
     assert trade.is_maker is False
     assert trade.price == pytest.approx(97.20)
+
+
+def test_repeating_the_same_action_preserves_fifo_priority():
+    # Regression test for a real bug found during Step 10 testing: step()
+    # originally scheduled a fresh cancel+resubmit on *every* call
+    # regardless of whether the action's resulting quote actually changed
+    # -- unlike backtest.market_maker_sim's strategies, which only touch
+    # the book on a real change. That silently cost the agent its FIFO
+    # queue priority every single decision, even while "holding" the same
+    # quote, making competitive-looking quotes far less likely to ever
+    # fill for reasons that had nothing to do with the policy itself.
+    events = pd.DataFrame(
+        [
+            _event(1, 0.0, "LIMIT", "SELL", 99.00, 10),
+            _event(2, 1.0, "LIMIT", "BUY", 97.00, 10),  # mid=98.00 from t=2 boundary onward
+            _event(3, 2.5, "LIMIT", "SELL", 98.02, 5),  # background joins AFTER our ask at the same price
+            _event(4, 3.5, "MARKET", "BUY", size=5),  # should hit OUR order first if priority preserved
+        ]
+    )
+    env = MarketMakingEnv(events, decision_interval_seconds=1.0)
+    env.reset(seed=0)
+    env.step(NO_QUOTE_ACTION)  # advance to t=2, mid=98.00 becomes available
+
+    action = ACTION_TABLE.index((2, 20))  # bid=97.98, ask=98.02
+    env.step(action)  # decision at t=2 -> boundary t=3: posts our quote, then event@2.5 lands behind it
+    env.step(action)  # same action again (must NOT cancel+resubmit) -> boundary t=4: event@3.5 processed here
+
+    assert len(env._portfolio.trades) == 1
+    trade = env._portfolio.trades[0]
+    assert trade.is_maker is True
+    assert trade.price == pytest.approx(98.02)
+    assert trade.size == 5

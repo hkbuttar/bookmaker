@@ -76,7 +76,7 @@ import itertools
 
 import pandas as pd
 
-from backtest.execution import apply_requote, attribute_fills
+from backtest.execution import AGENT_ASK_ID, AGENT_BID_ID, apply_requote, attribute_fills
 from backtest.portfolio import Portfolio
 from lob.engine import LatencyModel, MatchingEngine, zero_latency
 from lob.features import imbalance_from_row, mid_and_spread_from_row
@@ -169,7 +169,21 @@ def run_backtest(
             )
             desired = strategy.quote(state)
 
-            if desired != last_decided_quote:
+            # Resubmit not just when the *target* quote changes, but also
+            # when a side we want quoted isn't actually resting anymore --
+            # e.g. it was fully filled. Comparing only against
+            # last_decided_quote misses this: if background conditions
+            # happen to leave best_bid/best_ask looking unchanged after a
+            # full fill (something else was resting at the same price),
+            # the strategy's *desired* quote doesn't change either, and it
+            # would otherwise stay silently out of the market on that side
+            # for the rest of the session despite having zero resting
+            # orders there -- a real bug this project's own Step 10
+            # testing caught, not a hypothetical.
+            bid_missing = desired.bid_price is not None and not engine.book.has_order(AGENT_BID_ID)
+            ask_missing = desired.ask_price is not None and not engine.book.has_order(AGENT_ASK_ID)
+
+            if desired != last_decided_quote or bid_missing or ask_missing:
                 decision_time = rec["arrival_time"]
                 arrival_time = strategy_latency(decision_time)
                 heapq.heappush(pending, (arrival_time, next(seq_counter), decision_time, desired))

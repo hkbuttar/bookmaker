@@ -238,3 +238,33 @@ def test_decision_interval_none_is_default_and_unthrottled():
     counting = _CountingStrategy(NaiveSymmetricStrategy(half_spread=0.5, quote_size=10))
     run_backtest(events, counting)
     assert len(counting.call_times) == 2
+
+
+def test_resubmits_after_full_fill_even_when_market_state_looks_unchanged():
+    # Regression test for a real bug found during Step 10 testing: the
+    # "only requote when the desired quote changes" optimization compared
+    # against the *decided* quote, not whether it was still resting. If a
+    # strategy's resting order got fully filled but another order (here,
+    # background's) happened to sit at the exact same price afterward,
+    # best_bid/best_ask looked unchanged from the outside, so the
+    # strategy's *desired* quote never changed either -- and it would
+    # silently stay out of the market on that side for the rest of the
+    # session despite having zero resting orders there.
+    events = pd.DataFrame(
+        [
+            _event(1, 0.0, "LIMIT", "SELL", 99.00, 100),
+            _event(2, 1.0, "LIMIT", "BUY", 97.00, 100),  # mid=98.00
+            _event(3, 2.0, "LIMIT", "SELL", 98.50, 50),  # background also rests at our ask price
+            _event(4, 3.0, "MARKET", "BUY", size=10),  # fully consumes our ask (FIFO: ours was first)
+            # Background's order is now ahead of our (correctly) resubmitted
+            # one in the queue; a big enough sweep should reach it.
+            _event(5, 4.0, "MARKET", "BUY", size=60),
+        ]
+    )
+    strategy = NaiveSymmetricStrategy(half_spread=0.5, quote_size=10)
+    result = run_backtest(events, strategy)
+
+    assert len(result.portfolio.trades) == 2
+    assert result.portfolio.trades[0].price == pytest.approx(98.50)
+    assert result.portfolio.trades[1].price == pytest.approx(98.50)
+    assert result.portfolio.inventory == -20
