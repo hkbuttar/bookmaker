@@ -54,7 +54,9 @@ def build_latency_view():
         if df.empty:
             for name in STRATEGY_ORDER:
                 sources[name].data = dict(x=[], y=[])
+            fig.title.text = "Latency sensitivity -- no data yet (run: python3 -m backend.populate)"
             return
+        fig.title.text = "Latency sensitivity"
         latency_order = sorted(df["latency_preset"].unique(), key=lambda p: int(p.replace("ms", "")))
         fig.x_range.factors = latency_order
         for name in STRATEGY_ORDER:

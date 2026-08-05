@@ -75,7 +75,9 @@ def build_comparison_view():
         if df.empty:
             source.data = dict(x=[], value=[], strategy_name=[], latency_preset=[])
             table_source.data = dict()
+            fig.title.text = "Strategy comparison -- no data yet (run: python3 -m backend.populate)"
             return
+        fig.title.text = "Strategy comparison"
         df = df[df["strategy_name"].isin(STRATEGY_ORDER)].copy()
         df["x"] = list(zip(df["latency_preset"], df["strategy_name"]))
         latency_order = sorted(df["latency_preset"].unique(), key=lambda p: int(p.replace("ms", "")))

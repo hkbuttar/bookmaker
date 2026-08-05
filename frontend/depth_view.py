@@ -57,6 +57,13 @@ def depth_polygon(levels: list[list[float]], side: str) -> tuple[list[float], li
     return _post_step_area(pairs)
 
 
+MAX_SLIDER_STEPS = 300  # a raw per-event snapshot count (thousands, for a
+# multi-minute session) makes a native range input nearly unusable to drag
+# -- one pixel of mouse movement crosses many steps. Subsampling to this
+# many positions keeps the handle draggable; adjacent raw snapshots differ
+# by a single background event anyway, so little is lost visually.
+
+
 def build_depth_view():
     runs_df = data_access.list_simulation_runs()
 
@@ -88,25 +95,35 @@ def build_depth_view():
 
     fig.add_tools(HoverTool(renderers=[bid_patch, ask_patch], tooltips=[("price", "@x{0.00}"), ("cumulative size", "@y{0.0}")]))
 
-    run_select = Select(title="Simulation run", options=[(str(r["id"]), r["label"]) for _, r in runs_df.iterrows()])
-    time_slider = Slider(start=0, end=1, value=0, step=1, title="Snapshot index")
+    run_select = Select(
+        title="Simulation run" if len(runs_df) else "Simulation run (none yet -- run backend.populate)",
+        options=[(str(r["id"]), r["label"]) for _, r in runs_df.iterrows()],
+    )
+    time_slider = Slider(start=0, end=1, value=0, step=1, title="Snapshot")
 
-    state = {"snapshots": pd.DataFrame()}
+    state = {"snapshots": pd.DataFrame(), "indices": [0]}
 
     def _load_run(run_id: int) -> None:
-        state["snapshots"] = data_access.get_book_snapshots(run_id)
-        n = len(state["snapshots"])
-        time_slider.end = max(n - 1, 1)
+        snapshots = data_access.get_book_snapshots(run_id)
+        state["snapshots"] = snapshots
+        n = len(snapshots)
+        stride = max(1, n // MAX_SLIDER_STEPS)
+        indices = list(range(0, n, stride))
+        if indices and indices[-1] != n - 1 and n:
+            indices.append(n - 1)
+        state["indices"] = indices or [0]
+        time_slider.end = max(len(state["indices"]) - 1, 1)
         time_slider.value = 0
         _render(0)
 
-    def _render(index: int) -> None:
+    def _render(slider_pos: int) -> None:
         snapshots = state["snapshots"]
-        if snapshots.empty or index >= len(snapshots):
+        indices = state["indices"]
+        if snapshots.empty or slider_pos >= len(indices):
             bid_source.data = dict(x=[], y=[])
             ask_source.data = dict(x=[], y=[])
             return
-        row_ = snapshots.iloc[index]
+        row_ = snapshots.iloc[indices[slider_pos]]
         bx, by = depth_polygon(row_["bids"], "bid")
         ax, ay = depth_polygon(row_["asks"], "ask")
         bid_source.data = dict(x=bx, y=by)
@@ -117,11 +134,21 @@ def build_depth_view():
         if new:
             _load_run(int(new))
 
+    def _on_slider_move(attr, old, new):
+        # Live label while dragging (cheap text push); the actual chart
+        # redraw waits for value_throttled below so a fast drag doesn't
+        # queue up a redraw per pixel of mouse movement.
+        indices = state["indices"]
+        if not state["snapshots"].empty and new < len(indices):
+            t = state["snapshots"].iloc[indices[new]]["time"]
+            time_slider.title = f"Snapshot (t={t:.3f}s)"
+
     def _on_slider_change(attr, old, new):
         _render(int(new))
 
     run_select.on_change("value", _on_run_change)
-    time_slider.on_change("value", _on_slider_change)
+    time_slider.on_change("value", _on_slider_move)
+    time_slider.on_change("value_throttled", _on_slider_change)
 
     if len(runs_df):
         run_select.value = str(runs_df.iloc[0]["id"])

@@ -16,6 +16,8 @@ import numpy as np
 
 from backend.db import SessionLocal, init_db
 from backend.db_models import ComparisonResult, TrainingEpisode, TrainingRunRecord
+from backend.schemas import SimulateRequest
+from backend.simulate import run_simulation
 from backtest.market_maker_sim import run_backtest
 from backtest.metrics import summarize
 from data.synthetic_lob import SyntheticLOBConfig, generate_session
@@ -106,6 +108,29 @@ def populate_comparison_table(db, naive_run, aware_run) -> None:
     db.commit()
 
 
+DEMO_RUN_SPECS = (
+    ("naive", "0ms"),
+    ("naive", "20ms"),
+    ("inventory_aware", "5ms"),
+    ("adverse_selection_aware", "20ms"),
+)
+
+
+def populate_demo_simulation_runs(db) -> None:
+    """Gives the dashboard's order-book-depth tab something to show --
+    that view reads per-run book snapshots (SimulationRun/BookSnapshotRow),
+    which the comparison/training sweeps above never produce since they
+    only persist summary stats. Uses run_simulation() directly (the same
+    path POST /simulate takes) rather than a second backtest harness.
+    """
+    for strategy_name, latency_preset in DEMO_RUN_SPECS:
+        request = SimulateRequest(
+            strategy_name=strategy_name, strategy_params={}, latency_preset=latency_preset,
+            data_source="synthetic", session_seconds=EVAL_SESSION_SECONDS, seed=EVAL_SEED,
+        )
+        run_simulation(db, request)
+
+
 def _add_comparison_row(db, strategy_name: str, latency_preset: str, stats: dict) -> None:
     db.add(
         ComparisonResult(
@@ -133,6 +158,9 @@ def main() -> None:
 
         print("Running strategy comparison sweep...")
         populate_comparison_table(db, naive_run, aware_run)
+
+        print("Creating demo simulation runs for the order-book-depth view...")
+        populate_demo_simulation_runs(db)
 
         print("Done.")
     finally:

@@ -73,6 +73,8 @@ def build_training_view():
     ):
         if renderers:
             fig.add_tools(HoverTool(renderers=renderers, tooltips=[("episode", "@x"), (label, f"@{field}{{0.00}}")]))
+        else:
+            fig.title.text += " -- no data yet (run: python3 -m backend.populate)"
         fig.legend.location = "top_left"
         fig.legend.label_text_color = colors.TEXT_SECONDARY
         fig.legend.background_fill_color = colors.CHART_SURFACE
