@@ -18,6 +18,11 @@ data/binance_sample/
 # Notebooks
 .ipynb_checkpoints/
 
+# Backend runtime database (local dev default; deployment points
+# DATABASE_URL at Postgres instead)
+backend/*.db
+*.db
+
 # Env / secrets
 .env
 

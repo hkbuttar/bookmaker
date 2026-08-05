@@ -152,6 +152,7 @@ def train_dqn(
     seed: int = 0,
     inventory_penalty_lambda: float = 1e-3,
     inventory_penalty_cap: float = 50.0,
+    fill_bonus_per_share: float = 0.01,
     decision_interval_seconds: float = 1.0,
     use_curriculum: bool = True,
     curriculum_warmup_fraction: float = 0.3,
@@ -165,6 +166,7 @@ def train_dqn(
             decision_interval_seconds=decision_interval_seconds,
             inventory_penalty_lambda=initial_lambda,
             inventory_penalty_cap=inventory_penalty_cap,
+            fill_bonus_per_share=fill_bonus_per_share,
             strategy_latency_model=strategy_latency_model,
         )
     )
