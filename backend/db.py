@@ -30,10 +30,15 @@ _is_sqlite = DATABASE_URL.startswith("sqlite")
 # check_same_thread=False: FastAPI can hand a request to a different
 # thread than the one that opened the connection; only relevant for
 # SQLite, which is otherwise single-connection-thread-affine by default.
+# connect_timeout: without it, a connection attempt to an unreachable
+# host hangs on the OS-level TCP retransmission timeout (a minute or
+# more), which defeats init_db()'s retry loop below -- each attempt
+# needs to fail fast so the *loop's* backoff schedule is what controls
+# total wait time, not the kernel's.
 # pool_pre_ping: Postgres deployments (Render's included) recycle idle
 # connections server-side; without this, the first query after a lull
 # gets a stale connection and fails instead of transparently reconnecting.
-_connect_args = {"check_same_thread": False} if _is_sqlite else {}
+_connect_args = {"check_same_thread": False} if _is_sqlite else {"connect_timeout": 5}
 _engine_kwargs = {} if _is_sqlite else {"pool_pre_ping": True}
 engine = create_engine(DATABASE_URL, connect_args=_connect_args, **_engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
