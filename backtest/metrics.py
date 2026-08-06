@@ -89,15 +89,23 @@ def summarize(result: BacktestResult, adverse_selection_horizon_events: int = 20
     # risk-adjusted, just the number this run actually produced.
     final_pnl = equity_series.iloc[-1] if len(equity_series) else float("nan")
 
+    # float()/int() everywhere below: pandas reductions (.mean, .std,
+    # .iloc) return numpy scalar types, not plain Python ones. SQLite
+    # tolerates numpy.float64 silently (it subclasses float), which let
+    # this slip through every local run and test -- psycopg2/Postgres
+    # does not, and fails opaquely (a stringified "np.float64(...)"
+    # ends up embedded in the literal SQL under numpy>=2.0's repr,
+    # raising an unrelated-looking InvalidSchemaName). DB rows should
+    # hold plain Python types regardless of driver quirks.
     return {
         "n_fills": len(trades),
         "maker_fills": maker_fills,
         "taker_fills": taker_fills,
-        "final_inventory": result.portfolio.inventory,
-        "final_pnl": final_pnl,
-        "inventory_mean_abs": inventory_series.abs().mean(),
-        "inventory_std": inventory_series.std(),
-        "equity_std": equity_series.std(),
+        "final_inventory": float(result.portfolio.inventory),
+        "final_pnl": float(final_pnl),
+        "inventory_mean_abs": float(inventory_series.abs().mean()),
+        "inventory_std": float(inventory_series.std()),
+        "equity_std": float(equity_series.std()),
         "adverse_selection_cost": adverse_selection_cost(result, adverse_selection_horizon_events),
         "sharpe_ratio": sharpe_ratio(result),
     }
